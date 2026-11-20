@@ -24,7 +24,7 @@ function engineVersion(): string {
   }
 }
 
-const SUPPORTED_LANGUAGES = [
+const ALL_LANGUAGES = [
   'en',
   'ar',
   'be',
@@ -50,6 +50,19 @@ const SUPPORTED_LANGUAGES = [
   'ca',
   'fa',
 ] as const;
+// VITE_APP_LANGUAGES (e.g. "en") limits the build to those languages; English
+// is always included. Empty or "all" keeps every one.
+const REQUESTED_LANGUAGES = (process.env.VITE_APP_LANGUAGES || '').trim();
+const SUPPORTED_LANGUAGES: readonly string[] =
+  !REQUESTED_LANGUAGES || REQUESTED_LANGUAGES === 'all'
+    ? ALL_LANGUAGES
+    : ALL_LANGUAGES.filter(
+        (lang) =>
+          lang === 'en' ||
+          REQUESTED_LANGUAGES.split(',')
+            .map((l) => l.trim())
+            .includes(lang)
+      );
 const LANG_REGEX = new RegExp(
   `^/(${SUPPORTED_LANGUAGES.join('|')})(?:/(.*))?$`
 );

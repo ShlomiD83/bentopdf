@@ -12,6 +12,11 @@ export const createLanguageSwitcher = (): HTMLElement => {
   const container = document.createElement('div');
   container.className = 'relative';
   container.id = 'language-switcher';
+  // Nothing to switch to in a single-language build.
+  if (supportedLanguages.length <= 1) {
+    container.hidden = true;
+    return container;
+  }
 
   const button = document.createElement('button');
   button.className = `

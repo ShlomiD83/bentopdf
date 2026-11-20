@@ -8,6 +8,7 @@ import { completeDocsLanguages } from './docs-languages.mjs';
 import { createTranslationChecker } from './page-translation.mjs';
 import { canonicalBasePath } from './indexing-policy.mjs';
 import { applyServerTranslations } from './server-translations.mjs';
+import { filterAppLanguages } from './app-languages.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,9 +22,11 @@ const SITE_URL = (process.env.SITE_URL || 'https://www.bentopdf.com').replace(
 );
 const BASE_PATH = (process.env.BASE_URL || '/').replace(/\/$/, '');
 
-const languages = fs.readdirSync(LOCALES_DIR).filter((file) => {
-  return fs.statSync(path.join(LOCALES_DIR, file)).isDirectory();
-});
+const languages = filterAppLanguages(
+  fs.readdirSync(LOCALES_DIR).filter((file) => {
+    return fs.statSync(path.join(LOCALES_DIR, file)).isDirectory();
+  })
+);
 
 const OFFICIAL_DOCS_URL = 'https://www.bentopdf.com/docs';
 

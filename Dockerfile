@@ -64,6 +64,16 @@ ENV VITE_FOOTER_TEXT=$VITE_FOOTER_TEXT
 ARG DISABLE_TOOLS
 ENV DISABLE_TOOLS=$DISABLE_TOOLS
 
+# Docs languages to build (e.g. "en" for English only, or "en,de,fr").
+# Empty builds every fully translated language.
+ARG DOCS_LANGUAGES
+ENV DOCS_LANGUAGES=$DOCS_LANGUAGES
+
+# App (UI) languages to build (e.g. "en" for English only). English is always
+# included; empty builds every language. A single language hides the switcher.
+ARG VITE_APP_LANGUAGES
+ENV VITE_APP_LANGUAGES=$VITE_APP_LANGUAGES
+
 # Public-facing canonical site URL. Defaults to the official site so self-hosters
 # consolidate SEO signals back to bentopdf.com. A custom SITE_URL marks every page
 # noindex unless ALLOW_INDEXING=true is also set.

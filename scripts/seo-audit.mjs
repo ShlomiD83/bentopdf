@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { canonicalBasePath, isIndexingBlocked } from './indexing-policy.mjs';
 import { createTranslationChecker } from './page-translation.mjs';
+import { filterAppLanguages } from './app-languages.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -75,9 +76,11 @@ function findAll(html, regex) {
 }
 
 const LOCALE_DIRS = new Set(
-  fs
-    .readdirSync(LOCALES_DIR)
-    .filter((d) => fs.statSync(path.join(LOCALES_DIR, d)).isDirectory())
+  filterAppLanguages(
+    fs
+      .readdirSync(LOCALES_DIR)
+      .filter((d) => fs.statSync(path.join(LOCALES_DIR, d)).isDirectory())
+  )
 );
 
 const KEY_MAPPING = { index: 'home', 404: 'notFound' };
@@ -381,9 +384,11 @@ function auditSitemap() {
     }
   }
 
-  const expectedLocales = fs
-    .readdirSync(LOCALES_DIR)
-    .filter((d) => fs.statSync(path.join(LOCALES_DIR, d)).isDirectory());
+  const expectedLocales = filterAppLanguages(
+    fs
+      .readdirSync(LOCALES_DIR)
+      .filter((d) => fs.statSync(path.join(LOCALES_DIR, d)).isDirectory())
+  );
   for (const lang of expectedLocales) {
     if (lang === 'en') continue;
     const hreflangPattern = new RegExp(`hreflang="${lang}"`);

@@ -4,6 +4,7 @@ import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { OFFICIAL_SITE_URL, canonicalBasePath } from './indexing-policy.mjs';
 import { createTranslationChecker } from './page-translation.mjs';
+import { filterAppLanguages } from './app-languages.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,9 +17,11 @@ const SITE_URL = (process.env.SITE_URL || 'https://www.bentopdf.com').replace(
 );
 const EXCLUDED_PAGES = new Set(['404', 'wasm-settings']);
 
-const languages = fs.readdirSync(LOCALES_DIR).filter((file) => {
-  return fs.statSync(path.join(LOCALES_DIR, file)).isDirectory();
-});
+const languages = filterAppLanguages(
+  fs.readdirSync(LOCALES_DIR).filter((file) => {
+    return fs.statSync(path.join(LOCALES_DIR, file)).isDirectory();
+  })
+);
 
 const toCamelCase = (str) => {
   return str.replace(/-([a-z])/g, (g) => g[1].toUpperCase());

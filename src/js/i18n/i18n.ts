@@ -5,8 +5,8 @@ import { fillPlaceholders } from './placeholders.js';
 import enCommon from '../../../public/locales/en/common.json';
 import enTools from '../../../public/locales/en/tools.json';
 
-// Supported languages
-export const supportedLanguages = [
+// Every language the app ships translations for.
+const allLanguages = [
   'en',
   'ar',
   'be',
@@ -32,7 +32,22 @@ export const supportedLanguages = [
   'ca',
   'fa',
 ] as const;
-export type SupportedLanguage = (typeof supportedLanguages)[number];
+export type SupportedLanguage = (typeof allLanguages)[number];
+
+// VITE_APP_LANGUAGES (e.g. "en" or "en,de") limits the build to those
+// languages; English is always included. Empty or "all" keeps every one.
+const requestedLanguages = (import.meta.env.VITE_APP_LANGUAGES ?? '').trim();
+export const supportedLanguages: readonly SupportedLanguage[] =
+  !requestedLanguages || requestedLanguages === 'all'
+    ? allLanguages
+    : allLanguages.filter(
+        (lang) =>
+          lang === 'en' ||
+          requestedLanguages
+            .split(',')
+            .map((l) => l.trim())
+            .includes(lang)
+      );
 
 export const languageNames: Record<SupportedLanguage, string> = {
   en: 'English',
