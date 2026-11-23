@@ -1,0 +1,157 @@
+name: Build BentoPDF (Hebrew + English-only)
+
+# Daily: if upstream BentoPDF has a release that isn't built yet, apply the
+# patches from PATCH_BRANCH and publish a multi-arch image to GHCR.
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild even if this release was already built
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: alam00000/bentopdf
+  PATCH_BRANCH: custom/hebrew-en
+  IMAGE: ghcr.io/shlomid83/bento-pdf
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Find the latest upstream release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh api "repos/$UPSTREAM_REPO/releases/latest" -q .tag_name)
+          [ -n "$tag" ] || { echo "::error::no release found"; exit 1; }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Latest release: $tag"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Skip if already built
+        id: check
+        run: |
+          if [ "${{ inputs.force }}" != "true" ] \
+            && docker buildx imagetools inspect "$IMAGE:${{ steps.release.outputs.tag }}" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "$IMAGE:${{ steps.release.outputs.tag }} already exists; nothing to do."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Get the release and apply the patches
+        if: steps.check.outputs.skip == 'false'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@users.noreply.github.com"
+          git clone -q --filter=blob:none "https://github.com/$UPSTREAM_REPO.git" src
+          cd src
+          git checkout -q -B build "refs/tags/$TAG"
+          git fetch -q "https://github.com/${{ github.repository }}.git" \
+            "+refs/heads/$PATCH_BRANCH:refs/remotes/patches"
+          # The patches: everything on PATCH_BRANCH that upstream doesn't have.
+          base=$(git merge-base refs/remotes/patches origin/main)
+          git format-patch -q -o ../patches "$base..refs/remotes/patches"
+          for p in ../patches/*.patch; do
+            subject=$(sed -n 's/^Subject: \(\[PATCH[^]]*\] \)\{0,1\}//p' "$p" | head -1)
+            # The Hebrew fix may land upstream one day; skip it then.
+            if grep -q '^+++ b/src/js/utils/rtl-form-appearance.ts' "$p" \
+              && [ -f src/js/utils/rtl-form-appearance.ts ]; then
+              echo "::notice::skipped (already in $TAG): $subject"
+              continue
+            fi
+            git am -q -3 "$p" || {
+              echo "::error::patch does not apply to $TAG: $subject (update $PATCH_BRANCH)"
+              exit 1
+            }
+            echo "applied: $subject"
+          done
+          # The site build is the same for every CPU; run it natively and only
+          # emulate the small final stage for other architectures.
+          sed -E -i '0,/^FROM ([^ ]+) AS builder/s//FROM --platform=$BUILDPLATFORM \1 AS builder/' Dockerfile
+          grep -n '^FROM' Dockerfile
+
+      - name: Set up QEMU
+        if: steps.check.outputs.skip == 'false'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        if: steps.check.outputs.skip == 'false'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build for the smoke test (amd64)
+        if: steps.check.outputs.skip == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: src
+          platforms: linux/amd64
+          load: true
+          pull: true
+          no-cache: true
+          tags: bento-pdf:smoke
+          build-args: |
+            SIMPLE_MODE=true
+            DOCS_LANGUAGES=en
+            VITE_APP_LANGUAGES=en
+
+      - name: Smoke test
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          docker run -d --name smoke -p 3099:8080 bento-pdf:smoke
+          for _ in $(seq 1 30); do
+            sleep 2
+            curl -fs -o /dev/null http://localhost:3099/form-filler && ok=1 && break
+          done
+          [ "${ok:-}" = 1 ] || { docker logs smoke; echo "::error::the container did not serve pages"; exit 1; }
+          docker exec smoke sh -c 'ls /usr/share/nginx/html/assets | grep -q rtl-save-hook' \
+            || { echo "::error::the Hebrew fix is missing from the image"; exit 1; }
+          docker rm -f smoke
+
+      - name: Build and push (amd64 + arm64)
+        if: steps.check.outputs.skip == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: src
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ steps.release.outputs.tag }}
+          build-args: |
+            SIMPLE_MODE=true
+            DOCS_LANGUAGES=en
+            VITE_APP_LANGUAGES=en
+          labels: |
+            org.opencontainers.image.title=BentoPDF (Hebrew + English-only)
+            org.opencontainers.image.description=BentoPDF ${{ steps.release.outputs.tag }} by alam00000 (https://github.com/alam00000/bentopdf), with a Hebrew (RTL) fix and an English-only build.
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=AGPL-3.0-only
+            org.opencontainers.image.version=${{ steps.release.outputs.tag }}
+
+      - name: Summary
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          echo "### Published ${{ steps.release.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$IMAGE:latest\` and \`$IMAGE:${{ steps.release.outputs.tag }}\` (linux/amd64, linux/arm64)" >> "$GITHUB_STEP_SUMMARY"
